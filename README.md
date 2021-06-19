@@ -119,11 +119,7 @@ Run `make test` to run the test suite:
 $ make test
 python3 -m pytest -xv --flake8 --pylint --mypy tests/bundler_test.py
 ============================= test session starts ==============================
-platform darwin -- Python 3.9.1, pytest-6.1.2, py-1.9.0, pluggy-0.13.1 -- /Library/Frameworks/Python.framework/Versions/3.9/bin/python3
-cachedir: .pytest_cache
-rootdir: /Users/kyclark/work/cpath/3dt_data_bundler
-plugins: mypy-0.7.0, flake8-1.0.6, pylint-0.17.0
-collected 6 items
+...
 
 tests/bundler_test.py::FLAKE8 SKIPPED                                    [ 14%]
 tests/bundler_test.py::mypy PASSED                                       [ 28%]
