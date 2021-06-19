@@ -9,16 +9,17 @@ import argparse
 import os
 import re
 import sys
+import hashlib
 from shutil import copy
 from pathlib import Path
+from subprocess import getstatusoutput
 from typing import List, NamedTuple, Optional, TextIO
 
 
 class Args(NamedTuple):
     """ Command-line arguments """
-    in_dir: str
+    dirs: List[str]
     out_dir: str
-    manifest: TextIO
     skip_exts: List[str]
 
 
@@ -30,45 +31,34 @@ def get_args() -> Args:
         description='Data bundler for 3DT data',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('-i',
-                        '--indir',
+    parser.add_argument('dirs',
                         metavar='DIR',
-                        help='Input directory',
-                        required=True)
+                        help='Input directories',
+                        nargs='+')
 
     parser.add_argument('-o',
                         '--outdir',
                         metavar='DIR',
                         help='Output directory',
-                        required=True)
-
-    parser.add_argument('-m',
-                        '--manifest',
-                        metavar='FILE',
-                        type=argparse.FileType('wt'),
-                        help='Manifest path',
-                        default='manifest.txt')
+                        default='out')
 
     parser.add_argument('-s',
                         '--skip_exts',
                         metavar='STR',
                         help='Extensions for files to skip',
                         nargs='+',
-                        default=['.wav', '.mp3', '.mp4', '.zip'])
+                        default=['.wav', '.mp3', '.mp4', '.zip', '.pyc'])
 
     args = parser.parse_args()
 
-    if not os.path.isdir(args.indir):
-        parser.error(f'--indir "{args.indir}" is not a directory')
+    if bad := list(filter(lambda d: not os.path.isdir(d), args.dirs)):
+        parser.error(f'Invalid directory: {", ".join(bad)}')
 
     out_dir = normalize(args.outdir)
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
-    return Args(in_dir=args.indir,
-                out_dir=out_dir,
-                manifest=args.manifest,
-                skip_exts=args.skip_exts)
+    return Args(dirs=args.dirs, out_dir=out_dir, skip_exts=args.skip_exts)
 
 
 # --------------------------------------------------
@@ -76,48 +66,60 @@ def main() -> None:
     """ Make a jazz noise here """
 
     args = get_args()
-    in_dir = os.path.abspath(args.in_dir)
-    files = filter(Path.is_file, Path(in_dir).rglob('*'))
+    checksums_fh = open(os.path.join(args.out_dir, 'checksums.md5'), 'wt')
     num_copied, num_total = 0, 0
 
-    for i, path in enumerate(files, start=1):
-        num_total += 1
-        ext = os.path.splitext(path)[1]
+    for dirname in args.dirs:
+        in_dir = os.path.abspath(dirname)
+        files = filter(Path.is_file, Path(in_dir).rglob('*'))
 
-        # Check for skip files
-        if ext in args.skip_exts:
-            print(f'{path} is skipped', file=sys.stderr)
-            continue
+        for i, path in enumerate(files, start=1):
+            num_total += 1
+            ext = os.path.splitext(path)[1]
 
-        # Check for empty files
-        if path.stat().st_size == 0:
-            print(f'{path} is empty', file=sys.stderr)
-            continue
+            # Check for skip files
+            if ext in args.skip_exts:
+                print(f'{path} is skipped', file=sys.stderr)
+                continue
 
-        try:
-            if empty := h5_is_empty(path):
+            # Check for empty files
+            if path.stat().st_size == 0:
                 print(f'{path} is empty', file=sys.stderr)
                 continue
-        except Exception as e:
-            print(f'{path} is corrupted ({e})', file=sys.stderr)
-            continue
 
-        relative_dir = normalize(
-            re.sub('^[/]', '',
-                   re.sub(in_dir, '', os.path.dirname(path.absolute()))))
+            try:
+                if empty := h5_is_empty(path):
+                    print(f'{path} is empty', file=sys.stderr)
+                    continue
+            except Exception as e:
+                print(f'{path} is corrupted ({e})', file=sys.stderr)
+                continue
 
-        new_dir = os.path.join(args.out_dir, relative_dir)
-        if not os.path.isdir(new_dir):
-            os.makedirs(new_dir)
+            relative_dir = normalize(
+                re.sub('^[/]', '',
+                       re.sub(in_dir, '', os.path.dirname(path.absolute()))))
 
-        basename = normalize(os.path.basename(path))
-        print(f'{i:5}: Copying {basename}')
-        copy(path, os.path.join(new_dir, basename))
-        print(os.path.join(relative_dir, basename), file=args.manifest)
-        num_copied += 1
+            new_dir = os.path.join(args.out_dir, relative_dir)
+            if not os.path.isdir(new_dir):
+                os.makedirs(new_dir)
 
-    print(f'Done, copied {num_copied:,} of {num_total:,} to "{args.out_dir}".')
-    print(f'See manifest file "{args.manifest.name}".')
+            basename = normalize(os.path.basename(path))
+            print(f'{i:5}: Copying {basename}')
+            dest = os.path.join(new_dir, basename)
+            copy(path, dest)
+            print('{} {}'.format(
+                hashlib.md5(open(dest, 'rb').read()).hexdigest(),
+                os.path.join(relative_dir, basename)),
+                  file=checksums_fh)
+            num_copied += 1
+
+    checksums_fh.close()
+    zip_file = f'{args.out_dir}.zip'
+    rv, _ = getstatusoutput(f'zip -r {zip_file} {args.out_dir}')
+    if rv != 0:
+        sys.exit('Error zipping "{args.out_dir}"!')
+
+    print(f'Done, copied {num_copied:,} of {num_total:,} into "{zip_file}".')
 
 
 # --------------------------------------------------
