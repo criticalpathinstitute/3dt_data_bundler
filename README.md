@@ -16,7 +16,7 @@ optional arguments:
   -m FILE, --manifest FILE
                         Manifest path (default: manifest.txt)
   -s STR [STR ...], --skip_exts STR [STR ...]
-                        Cxtensions for files to skip (default: ['.wav',
+                        Extensions for files to skip (default: ['.wav',
                         '.mp3', '.mp4', '.zip'])
 ```
 

@@ -52,7 +52,7 @@ def get_args() -> Args:
     parser.add_argument('-s',
                         '--skip_exts',
                         metavar='STR',
-                        help='Cxtensions for files to skip',
+                        help='Extensions for files to skip',
                         nargs='+',
                         default=['.wav', '.mp3', '.mp4', '.zip'])
 
